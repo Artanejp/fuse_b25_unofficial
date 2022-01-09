@@ -601,7 +601,8 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 
 		sec->pid = pid;
 		sec->cb_func = cb_func;
-		sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
+		//sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
+		sec->fd = open(priv->dmx_name, O_RDONLY);
 		if (sec->fd < 0) {
 			err = errno;
 			syslog(LOG_INFO, "failed to open the demux device:%s\n",
@@ -932,7 +933,10 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 			err = EIO;
 			syslog(LOG_INFO, "poll received an error on the fd"
 				" for pid:%#06hx", map->pids[i]);
-			goto failed;
+			if((errno != EOVERFLOW)) { // OK?
+				goto failed;
+			}
+		   
 		}
 	}
 
@@ -996,19 +1000,32 @@ fetch_loop(void *data)
 		while (res > 0 && priv->inbuf_len < min_read) {
 			res = (int)read(priv->fd, p,
 					sizeof(priv->inbuf) - priv->inbuf_len);
-			if (res == 0 || (res <= 0 && errno != EAGAIN)) {
+			if (res == 0 || (res <= 0 && ((errno != EAGAIN) && (errno != EOVERFLOW)))) { // Dirty hack.
 				err = errno;
 				syslog(LOG_INFO, "failed to read. ret:%d err:%d",
 					res, err);
 				goto failed;
-			} else if (res < 0) {
+			} else if ((res < 0) && (errno == EAGAIN)){
 				// EAGAIN
+				int nerr = errno;
+				syslog(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
+					res, nerr);
+				usleep(1000); // Penalty 1 uSec.
+				res = 0;
+				//break;
+				continue;
+			} else if((res < 0) && (errno == EOVERFLOW)) {
+				// EOVERFLOW: Discard data(TRY)
+				int nerr = errno;
+				syslog(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
+					res, nerr);
 				res = 0;
 				break;
 			}
+			    
 			p += res;
 			priv->inbuf_len += res;
-			res = poll(&pfd, 1, 0); // redundant?
+			//res = poll(&pfd, 1, 0); // redundant?
 		};
 
 		if (res < 0) {

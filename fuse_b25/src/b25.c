@@ -187,7 +187,8 @@ b25_open(const char *path, struct fuse_file_info *fi)
 	syslog(LOG_DEBUG, "%s open flags:%#x\n", path, fi->flags);
 
 	set_target_path(target_path, sizeof(target_path), path);
-	fd = open(target_path, fi->flags | O_NONBLOCK);
+	//fd = open(target_path, fi->flags | O_NONBLOCK);
+	fd = open(target_path, fi->flags );
 	if (fd < 0) {
 		res = -errno;
 		syslog(LOG_INFO, "failed to open %s device: %m\n", path);
