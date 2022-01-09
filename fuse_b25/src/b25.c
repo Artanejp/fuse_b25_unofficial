@@ -278,8 +278,8 @@ demux_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 	if (filter->err != 0) {
 		len = -filter->err;
 		filter->remaining_len = 0;
-		syslog(LOG_DEBUG, "failed to read from %s device. err:%d\n",
-			path, filter->err);
+		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+			__FUNCTION__, __LINE__, path, filter->err);
 		goto done;
 	} else if (filter->remaining_len > 0 &&
 		   filter->stype != SECTION_TYPE_PES) {
@@ -316,8 +316,8 @@ demux_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 	if (filter->err != 0) {
 		len = -filter->err;
 		filter->remaining_len = 0;
-		syslog(LOG_DEBUG, "failed to read from %s device. err:%d\n",
-			path, filter->err);
+		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+			__FUNCTION__, __LINE__, path, filter->err);
 		goto done;
 	}
 
@@ -428,8 +428,8 @@ dvr_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 
 	if (stream->err != 0) {
 		len = -stream->err;
-		syslog(LOG_DEBUG, "failed to read from %s device. err:%d\n",
-			path, stream->err);
+		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+			   __FUNCTION__, __LINE__, path, stream->err);
 		goto done;
 	}
 

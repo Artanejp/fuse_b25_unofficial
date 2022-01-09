@@ -933,9 +933,9 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 			err = EIO;
 			syslog(LOG_INFO, "poll received an error on the fd"
 				" for pid:%#06hx", map->pids[i]);
-			if((errno != EOVERFLOW)) { // OK?
+//			if((errno != EOVERFLOW)) { // OK?
 				goto failed;
-			}
+//			}
 		   
 		}
 	}
@@ -979,6 +979,7 @@ fetch_loop(void *data)
 	pfd.fd = priv->fd;
 	pfd.events = POLLIN;
 	min_read = MAX_SCAN_LEN;
+
 	while (1) {
 		/* check for data availability of each fd's */
 		timeout = (priv->pat.ver != VER_NONE) ? 0 : -1;
@@ -990,45 +991,54 @@ fetch_loop(void *data)
 		if (err)
 			goto failed;
 
-		res = do_read_section(priv, &priv->ecm_map, 0);
+		err = do_read_section(priv, &priv->ecm_map, 0);
 		if (err)
 			goto failed;
 
 		/* read from dvr0 dev */
 		p = priv->inbuf + priv->inbuf_len;
-		res = poll(&pfd, 1, 10);
-		while (res > 0 && priv->inbuf_len < min_read) {
+		res = poll(&pfd, 1, 10000);
+		if(res > 0) {
+		while (priv->inbuf_len < min_read) {
+			int __read_len = sizeof(priv->inbuf) - priv->inbuf_len;
+			if(__read_len <= 0) break; // Already read full.
 			res = (int)read(priv->fd, p,
-					sizeof(priv->inbuf) - priv->inbuf_len);
-			if (res == 0 || (res <= 0 && ((errno != EAGAIN) && (errno != EOVERFLOW)))) { // Dirty hack.
-				err = errno;
-				syslog(LOG_INFO, "failed to read. ret:%d err:%d",
-					res, err);
-				goto failed;
-			} else if ((res < 0) && (errno == EAGAIN)){
-				// EAGAIN
-				int nerr = errno;
-				syslog(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
-					res, nerr);
-				usleep(1000); // Penalty 1 uSec.
-				res = 0;
-				//break;
-				continue;
-			} else if((res < 0) && (errno == EOVERFLOW)) {
-				// EOVERFLOW: Discard data(TRY)
-				int nerr = errno;
-				syslog(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
-					res, nerr);
-				res = 0;
-				break;
+					__read_len);
+			if(res < 0) { // Any error(s).
+				
+				if ((errno != EAGAIN) && (errno != EOVERFLOW)) { // Dirty hack.
+					err = errno;
+					syslog(LOG_INFO, "fetch_loop(): failed to read. ret:%d err:%d",
+						   res, err);
+					goto failed;
+				} else if (errno == EAGAIN){
+					// EAGAIN
+					int nerr = errno;
+					syslog(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
+						   res, nerr);
+					int rres = poll(&pfd, 1, 10000); // redundant?
+					if(rres < 0) {
+						err = nerr;
+						break; // Any error
+					}
+					continue;
+				} else if(errno == EOVERFLOW) {
+					// EOVERFLOW: Discard data(TRY)
+					err = errno;
+					syslog(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
+						   res, err);
+					break;
+				}
 			}
-			    
-			p += res;
-			priv->inbuf_len += res;
+			if(res > 0) {
+				p += res;
+				priv->inbuf_len += res;
+			}
 			//res = poll(&pfd, 1, 0); // redundant?
+			//if(res <= 0) break;
 		};
-
-		if (res < 0) {
+		}
+		if (res < 0) { //
 			err = errno;
 			syslog(LOG_INFO, "failed to poll on dvr.\n");
 			goto failed;
