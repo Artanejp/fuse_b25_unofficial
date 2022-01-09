@@ -39,6 +39,8 @@
 #define syslog(a, args...) fprintf(stderr, args...)
 #endif
 
+#include "fuse_b25_common.h"
+
 struct options b25_priv;
 
 enum {
@@ -184,14 +186,14 @@ b25_open(const char *path, struct fuse_file_info *fi)
 	 * check here with fuse_get_context()->uid,gid
 	 */
 
-	syslog(LOG_DEBUG, "%s open flags:%#x\n", path, fi->flags);
+	SYSLOG_B25(LOG_DEBUG, "%s open flags:%#x\n", path, fi->flags);
 
 	set_target_path(target_path, sizeof(target_path), path);
-	//fd = open(target_path, fi->flags | O_NONBLOCK);
-	fd = open(target_path, fi->flags );
+	fd = open(target_path, fi->flags | O_NONBLOCK);
+	//fd = open(target_path, fi->flags );
 	if (fd < 0) {
 		res = -errno;
-		syslog(LOG_INFO, "failed to open %s device: %m\n", path);
+		SYSLOG_B25(LOG_INFO, "failed to open %s device: %m\n", path);
 		return res;
 	}
 
@@ -202,7 +204,7 @@ b25_open(const char *path, struct fuse_file_info *fi)
 		/* path: demuxN */
 		filter = calloc(1, sizeof(struct secfilter_priv));
 		if (filter == NULL) {
-			syslog(LOG_NOTICE, "failed to allocate mem for sec.filter.\n");
+			SYSLOG_B25(LOG_NOTICE, "failed to allocate mem for sec.filter.\n");
 			return -ENOMEM;
 		}
 
@@ -222,7 +224,7 @@ b25_open(const char *path, struct fuse_file_info *fi)
 
 	stream = calloc(1, sizeof(struct stream_priv));
 	if (stream == NULL) {
-		syslog(LOG_NOTICE, "failed to allocate mem for stream.\n");
+		SYSLOG_B25(LOG_NOTICE, "failed to allocate mem for stream.\n");
 		return -ENOMEM;
 	}
 
@@ -278,7 +280,7 @@ demux_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 	if (filter->err != 0) {
 		len = -filter->err;
 		filter->remaining_len = 0;
-		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+		SYSLOG_B25(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
 			__FUNCTION__, __LINE__, path, filter->err);
 		goto done;
 	} else if (filter->remaining_len > 0 &&
@@ -316,7 +318,7 @@ demux_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 	if (filter->err != 0) {
 		len = -filter->err;
 		filter->remaining_len = 0;
-		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+		SYSLOG_B25(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
 			__FUNCTION__, __LINE__, path, filter->err);
 		goto done;
 	}
@@ -385,14 +387,14 @@ demux_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 			filter->outbuf_head += l;
 		}
 		if (l != filter->remaining_len) {
-			syslog(LOG_INFO, "broken buffer data detected.\n");
+			SYSLOG_B25(LOG_INFO, "broken buffer data detected.\n");
 			filter->remaining_len = 0;
 		}
 	}
 
 done:
 	pthread_mutex_unlock(&filter->filter_lock);
-	syslog(LOG_DEBUG, "read %d bytes from %s\n", len, path);
+	SYSLOG_B25(LOG_DEBUG, "read %d bytes from %s\n", len, path);
 	return len;
 }
 
@@ -428,7 +430,7 @@ dvr_read(const char *path, char *buf, size_t size, struct fuse_file_info *fi)
 
 	if (stream->err != 0) {
 		len = -stream->err;
-		syslog(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
+		SYSLOG_B25(LOG_DEBUG, "%s: LINE %d: failed to read from %s device. err:%d\n",
 			   __FUNCTION__, __LINE__, path, stream->err);
 		goto done;
 	}
@@ -489,7 +491,7 @@ b25_ioctl(const char *path, int cmd, void *arg,
 	if (fuse_interrupted())
 		return -EINTR;
 
-	syslog(LOG_DEBUG, "ioctl on %s cmd:%x arg:%p\n", path, cmd, arg);
+	SYSLOG_B25(LOG_DEBUG, "ioctl on %s cmd:%x arg:%p\n", path, cmd, arg);
 
 #if 0
 	if (flags & FUSE_IOCTL_COMPAT)
@@ -587,7 +589,7 @@ b25_init(struct fuse_conn_info *conn)
 	b25_priv.card.iccname = b25_priv.card_name;
 	res = bcas_init(&b25_priv.card);
 	if (res != 0) {
-		syslog(LOG_NOTICE, "failed to invoke the card I/O thread.\n");
+		SYSLOG_B25(LOG_NOTICE, "failed to invoke the card I/O thread.\n");
 		fuse_exit(fuse_get_context()->fuse);
 		return NULL;
 	}
@@ -639,19 +641,18 @@ main(int argc, char **argv)
 	char dmx[64];
 
 	openlog("FUSE_b25", LOG_PID | LOG_PERROR, LOG_LOCAL7);
-
 	memset(&b25_priv, 0, sizeof(b25_priv));
 	b25_priv.emm = 1;
 	b25_priv.conv = 0;
 	res = fuse_opt_parse(&args, &b25_priv, b25_opts, &my_opt_proc);
 	if (res == -1) {
-		syslog(LOG_NOTICE, "failed to parse options: %m\n");
+		SYSLOG_B25(LOG_NOTICE, "failed to parse options: %m\n");
 		return 1;
 	}
 	res = fuse_opt_add_arg(&args, "-odirect_io");
 	res += fuse_opt_add_arg(&args, "-odefault_permissions");
 	if (res < 0) {
-		syslog(LOG_NOTICE, "failed to add \"direct_io\"/"
+		SYSLOG_B25(LOG_NOTICE, "failed to add \"direct_io\"/"
 			"\"default_permissions\" options: %m\n");
 		return 1;
 	}
@@ -661,13 +662,13 @@ main(int argc, char **argv)
 			  &mountpoint, &multithreaded, NULL);
 	fuse_opt_free_args(&args);
 	if (fuse == NULL) {
-		syslog(LOG_NOTICE, "failed to setup fuse: %m\n");
+		SYSLOG_B25(LOG_NOTICE, "failed to setup fuse: %m\n");
 		return 1;
 	}
 
 	res = sscanf(mountpoint, "/dev/dvb/adapter%u", &adapter);
 	if (res != 1) {
-		syslog(LOG_NOTICE, "invalid mount point: \"%s\"\n", mountpoint);
+		SYSLOG_B25(LOG_NOTICE, "invalid mount point: \"%s\"\n", mountpoint);
 		return 1;
 	}
 
@@ -701,6 +702,7 @@ main(int argc, char **argv)
 		} else
 			res = -1;
 	}
+	SYSLOG_B25(LOG_INFO, "Try to open target DVB device path:[%s]\n", b25_priv.target_dir);
 
 	set_target_path(dmx, sizeof(dmx), "/demux0");
 	if (res < 0 || stat(dmx, &st) || !S_ISCHR(st.st_mode)
@@ -708,7 +710,7 @@ main(int argc, char **argv)
 	   || eaccess(dmx, R_OK)
 #endif
 	   ) {
-		syslog(LOG_NOTICE, "can't access the target DVB device:[%s/]\n", b25_priv.target_dir);
+		SYSLOG_B25(LOG_NOTICE, "can't access the target DVB device:[%s/]\n", b25_priv.target_dir);
 		return 1;
 	}
 
@@ -719,7 +721,7 @@ main(int argc, char **argv)
 		res = fuse_loop(fuse);
 
 	if (res == -1)
-		syslog(LOG_NOTICE, "failed in fuse_loop: %m\n");
+		SYSLOG_B25(LOG_NOTICE, "failed in fuse_loop: %m\n");
 
 	fuse_teardown(fuse, mountpoint);
 	closelog();

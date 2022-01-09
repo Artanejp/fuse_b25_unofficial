@@ -21,6 +21,8 @@
 #define syslog(a, args...) fprintf(stderr, args...)
 #endif
 
+#include "fuse_b25_common.h"
+
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
 #define DESC_NETWORK_NAME 0x40
@@ -208,7 +210,7 @@ convert_text(uint8_t **src, int len, int *sleft, uint8_t **dst, int *dleft,
 
 	res = aribstr_to_utf16(cd, (char *)*src, len, (char *)*dst, min(*dleft, max));
 	if (res < 0) {
-		syslog(LOG_DEBUG, "failed to convert text in SI table.\n");
+		SYSLOG_B25(LOG_DEBUG, "failed to convert text in SI table.\n");
 		res = min(len, min(*dleft, max));
 		// memcpy(*dst, *src, res);
 	}
@@ -218,7 +220,7 @@ convert_text(uint8_t **src, int len, int *sleft, uint8_t **dst, int *dleft,
 	*dleft -= res;
 /*
 	if (res > 0)
-		syslog(LOG_DEBUG, "converted text:%s[%d]\n", *dst, res);
+		SYSLOG_B25(LOG_DEBUG, "converted text:%s[%d]\n", *dst, res);
 */
 
 	return res;
@@ -603,7 +605,7 @@ convert_descriptors(uint8_t *src, int sleft, uint8_t *dst, int size,
 	return size - dleft;
 
 failed:
-	syslog(LOG_DEBUG, "bad data for %s desc.\n", desc);
+	SYSLOG_B25(LOG_DEBUG, "bad data for %s desc.\n", desc);
 	return -1;
 }
 
@@ -725,7 +727,7 @@ convert_nit(struct stream_priv *priv, uint16_t pid)
 	if (q == NULL) {
 		q = sec->priv = calloc(1, 2048);
 		if (q == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for NIT.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for NIT.\n");
 			return;
 		}
 	}
@@ -742,7 +744,7 @@ bailout:
 		free(sec->priv);
 		sec->priv = NULL;
 	}
-	syslog(LOG_INFO, "bad section data / data overlow for NIT.\n");
+	SYSLOG_B25(LOG_INFO, "bad section data / data overlow for NIT.\n");
 	return;
 }
 
@@ -833,7 +835,7 @@ convert_sdt(struct stream_priv *priv, uint16_t pid)
 	if (q == NULL) {
 		q = sec->priv = calloc(1, 2048);
 		if (q == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for SDT.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for SDT.\n");
 			return;
 		}
 	}
@@ -850,7 +852,7 @@ bailout:
 		free(sec->priv);
 		sec->priv = NULL;
 	}
-	syslog(LOG_INFO, "bad section data for SDT.\n");
+	SYSLOG_B25(LOG_INFO, "bad section data for SDT.\n");
 	return;
 }
 
@@ -878,7 +880,7 @@ do_convert_eit(uint8_t *src, size_t slen, uint8_t *dst, size_t dlen,
 
 	while (l >= 12) {
 		if (ol < 12) {
-			syslog(LOG_NOTICE, "overflow in EIT."
+			SYSLOG_B25(LOG_NOTICE, "overflow in EIT."
 				" discarding the rest.\n");
 			goto done;
 		}
@@ -917,7 +919,7 @@ do_convert_eit(uint8_t *src, size_t slen, uint8_t *dst, size_t dlen,
 			res = dl;
 		}
 		if (res < 0) {
-			syslog(LOG_NOTICE, "bad data/overflow in EIT."
+			SYSLOG_B25(LOG_NOTICE, "bad data/overflow in EIT."
 				" discarding the rest.\n");
 			p -= 12;
 			q -= 12;
@@ -985,7 +987,7 @@ convert_eith(struct stream_priv *priv, uint16_t pid)
 	if (q == NULL) {
 		q = sec->priv = calloc(1, 4096);
 		if (q == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for EIT.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for EIT.\n");
 			return;
 		}
 	}
@@ -1003,7 +1005,7 @@ bailout:
 		free(sec->priv);
 		sec->priv = NULL;
 	}
-	syslog(LOG_INFO, "bad section data for EIT.\n");
+	SYSLOG_B25(LOG_INFO, "bad section data for EIT.\n");
 	return;
 }
 

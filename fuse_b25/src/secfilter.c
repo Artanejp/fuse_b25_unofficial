@@ -22,6 +22,8 @@
 #define syslog(a, args...) fprintf(stderr, args...)
 #endif
 
+#include "fuse_b25_common.h"
+
 #define TRUE 1
 
 #include "convert.h"
@@ -83,7 +85,7 @@ push_secbuf(struct secfilter_priv *priv, const uint8_t *buf, size_t len)
 			memcpy(priv->outbuf, buf + l, len - l);
 		}
 		if (priv->outbuf_head - priv->outbuf_tail <= len) {
-			syslog(LOG_DEBUG, "outbuf overflowed.\n");
+			SYSLOG_B25(LOG_DEBUG, "outbuf overflowed.\n");
 			l = len - (priv->outbuf_head - priv->outbuf_tail) + 1;
 			/* discard one or more section(s) */
 			if (priv->stype != SECTION_TYPE_PES)
@@ -100,7 +102,7 @@ push_secbuf(struct secfilter_priv *priv, const uint8_t *buf, size_t len)
 			memcpy(priv->outbuf + priv->outbuf_tail, buf, l);
 			memcpy(priv->outbuf, buf + l, len - l);
 			if (len - l >= priv->outbuf_head) {
-				syslog(LOG_DEBUG, "outbuf overflowed.\n");
+				SYSLOG_B25(LOG_DEBUG, "outbuf overflowed.\n");
 				l = len - l - priv->outbuf_head + 1;
 				/* discard one or more section(s) */
 				if (priv->stype != SECTION_TYPE_PES)
@@ -119,7 +121,7 @@ push_secbuf(struct secfilter_priv *priv, const uint8_t *buf, size_t len)
 		priv->ph = NULL;
 	}
 	pthread_cond_signal(&priv->buf_cond);
-	syslog(LOG_DEBUG, "secfilter output. len:%lu\n", len);
+	SYSLOG_B25(LOG_DEBUG, "secfilter output. len:%lu\n", len);
 }
 
 static void
@@ -147,7 +149,7 @@ output:
 	return;
 
 baddata:
-	syslog(LOG_INFO, "demux read() returned broken data. seclen:%u\n",
+	SYSLOG_B25(LOG_INFO, "demux read() returned broken data. seclen:%u\n",
 	    seclen);
 	return;
 }
@@ -174,7 +176,7 @@ convert_nit_sec(struct secfilter_priv *priv)
 	return;
 
 baddata:
-	syslog(LOG_INFO, "bad section data / overlow in NIT. seclen:%u\n",
+	SYSLOG_B25(LOG_INFO, "bad section data / overlow in NIT. seclen:%u\n",
 	    seclen);
 	return;
 }
@@ -202,7 +204,7 @@ convert_sdt_sec(struct secfilter_priv *priv)
 	return;
 
 baddata:
-	syslog(LOG_INFO, "bad section data / overlow in SDT. seclen:%u\n",
+	SYSLOG_B25(LOG_INFO, "bad section data / overlow in SDT. seclen:%u\n",
 	    seclen);
 	return;
 }
@@ -228,7 +230,7 @@ convert_eit_sec(struct secfilter_priv *priv)
 	return;
 
 baddata:
-	syslog(LOG_INFO, "bad section data / overlow in EIT. seclen:%u\n",
+	SYSLOG_B25(LOG_INFO, "bad section data / overlow in EIT. seclen:%u\n",
 	    seclen);
 	return;
 }
@@ -255,7 +257,7 @@ filter_loop(void *data)
 	pfd.fd = priv->fd;
 	pfd.events = POLLIN;
 
-	syslog(LOG_DEBUG, "filter_loop started. \n");
+	SYSLOG_B25(LOG_DEBUG, "filter_loop started. \n");
 
 	while (1) {
 		pthread_testcancel();
@@ -263,7 +265,7 @@ filter_loop(void *data)
 		err = poll(&pfd, 1, SECFILTER_POLL_INTERVAL);
 		if (err < 0) {
 			priv->err = errno;
-			syslog(LOG_INFO, "failed to poll on demuxer.\n");
+			SYSLOG_B25(LOG_INFO, "failed to poll on demuxer.\n");
 			break;
 		} else if (err == 0)
 			continue;
@@ -273,14 +275,14 @@ filter_loop(void *data)
 		/* but don't bailout if POLLERR, */
 		/*  which can indicate filter's timeout or broken data */
 		if ((pfd.revents & POLLHUP) || (pfd.revents & POLLNVAL)) {
-			syslog(LOG_INFO, "target device reported error.\n");
+			SYSLOG_B25(LOG_INFO, "target device reported error.\n");
 			break;
 		}
 
 		/* according to DVB API, if the buffer is large enough, */
 		/* read() always returns the whole section */
 		err = (int) read(pfd.fd, priv->inbuf, sizeof(priv->inbuf));
-		syslog(LOG_DEBUG, "read ret:%d errno:%d.\n", err, errno);
+		SYSLOG_B25(LOG_DEBUG, "read ret:%d errno:%d.\n", err, errno);
 		if (err < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 			continue;
 
@@ -332,7 +334,7 @@ filter_loop(void *data)
 		priv->ph = NULL;
 	}
 	pthread_mutex_unlock(&priv->filter_lock);
-	syslog(LOG_DEBUG, "filter loop exited.\n");
+	SYSLOG_B25(LOG_DEBUG, "filter loop exited.\n");
 	pthread_cleanup_pop(0);
 	return NULL;
 }
@@ -373,7 +375,7 @@ secfilter_ioctl_hook(struct secfilter_priv *priv, int cmd, void *data)
 	priv->remaining_len = 0;
 	priv->err = 0;
 	pthread_mutex_unlock(&priv->filter_lock);
-	syslog(LOG_DEBUG, "secfilter pid:%#04hx stype:%d\n", pid, priv->stype);
+	SYSLOG_B25(LOG_DEBUG, "secfilter pid:%#04hx stype:%d\n", pid, priv->stype);
 	return 0;
 }
 
@@ -387,7 +389,7 @@ init_secfilter(struct secfilter_priv *priv)
 	if (!priv->fs_priv->dmxraw) {
 		priv->iconv_cd = iconv_open("UTF-16BE//TRANSLIT", "EUC-JISX0213");
 		if (priv->iconv_cd == (iconv_t)-1) {
-			syslog(LOG_INFO,
+			SYSLOG_B25(LOG_INFO,
 				"text conv. disabled as iconv_open() failed:%m\n");
 			priv->fs_priv->dmxraw = 1;
 		}
@@ -413,7 +415,7 @@ release_secfilter(struct secfilter_priv *priv)
 		priv->ph = NULL;
 	}
 	pthread_mutex_unlock(&priv->filter_lock);
-	syslog(LOG_DEBUG, "releasing demux device\n");
+	SYSLOG_B25(LOG_DEBUG, "releasing demux device\n");
 
 	if (!priv->fs_priv->dmxraw && priv->iconv_cd != (iconv_t)-1)
 		iconv_close(priv->iconv_cd);

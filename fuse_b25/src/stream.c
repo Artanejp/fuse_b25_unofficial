@@ -24,6 +24,8 @@
 #define syslog(a, args...) fprintf(stderr, args...)
 #endif
 
+#include "fuse_b25_common.h"
+
 #include "stream.h"
 #include "bcas.h"
 #include "convert.h"
@@ -73,7 +75,7 @@ get_packet_size(struct stream_priv *priv)
 					break;
 			if (j == NUM_OK_SYNC) {
 				priv->packet_size = size;
-				syslog(LOG_DEBUG,
+				SYSLOG_B25(LOG_DEBUG,
 				       "detected TS packet size %lu bytes.\n",
 				       size);
 				return i;
@@ -82,7 +84,7 @@ get_packet_size(struct stream_priv *priv)
 		}
 	}
 
-	syslog(LOG_DEBUG, "failed to detect TS packet size.%m\n");
+	SYSLOG_B25(LOG_DEBUG, "failed to detect TS packet size.%m\n");
 	priv->inbuf_len = 0;
 	priv->packet_size = 0;
 	return -1;
@@ -120,7 +122,7 @@ parse_pat(struct stream_priv *priv, uint16_t pid)
 	sec = priv->sections[pid];
 
 	if (sec->buf[0] != TID_PAT || sec->len < 12) {
-		syslog(LOG_INFO, "received bad table[%#04hhx] for PAT.\n",
+		SYSLOG_B25(LOG_INFO, "received bad table[%#04hhx] for PAT.\n",
 		       sec->buf[0]);
 		return;
 	}
@@ -135,7 +137,7 @@ parse_pat(struct stream_priv *priv, uint16_t pid)
 		return;  // already parsed PAT
 
 	pnum = (sec->len - 12) / 4;
-	syslog(LOG_DEBUG, "new PAT for ts:%#06x, ver:%#04x, %d-progs.\n",
+	SYSLOG_B25(LOG_DEBUG, "new PAT for ts:%#06x, ver:%#04x, %d-progs.\n",
 	       ts_id, ver, pnum);
 	if (pnum > PSI_MAX_PROG)
 		pnum = PSI_MAX_PROG;
@@ -201,7 +203,7 @@ parse_pmt(struct stream_priv *priv, uint16_t pid)
 	if (sec->priv == NULL) {
 		sec->priv = calloc(1, sizeof(struct pmt));
 		if (sec->priv == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for PMT.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for PMT.\n");
 			return;
 		}
 		pmt = sec->priv;
@@ -235,7 +237,7 @@ parse_pmt(struct stream_priv *priv, uint16_t pid)
 			pmt->prog_ecm.pid = (p[4] & 0x1f) << 8 | p[5];
 			if (pmt->prog_ecm.cas_id != ID_CAS_ARIB &&
 			    pmt->prog_ecm.pid != PID_NONE)
-				syslog(LOG_INFO,
+				SYSLOG_B25(LOG_INFO,
 				      "found an invalid CAS-ID in PMT.\n");
 			else if (pmt->prog_ecm.pid != PID_NONE)
 				get_section_for_pid(priv, pmt->prog_ecm.pid,
@@ -271,7 +273,7 @@ parse_pmt(struct stream_priv *priv, uint16_t pid)
 				ca->pid =(p[4] & 0x1f) << 8 | p[5];
 				if (ca->cas_id != ID_CAS_ARIB &&
 				    ca->pid != PID_NONE)
-					syslog(LOG_INFO,
+					SYSLOG_B25(LOG_INFO,
 					      "found an invalid CAS-ID in PMT.\n");
 				else if (ca->pid != PID_NONE)
 					get_section_for_pid(priv, ca->pid,
@@ -290,13 +292,13 @@ parse_pmt(struct stream_priv *priv, uint16_t pid)
 	}
 
 	unref_ecm(priv, &oldpmt);
-	syslog(LOG_DEBUG, "new PMT for prog:%#06x, ver:%#04x, %d-pes's.\n",
+	SYSLOG_B25(LOG_DEBUG, "new PMT for prog:%#06x, ver:%#04x, %d-pes's.\n",
 	       prog_id, ver, pmt->num_es);
 
 	return;
 
 bailout:
-	syslog(LOG_INFO, "received bad table for PMT.\n");
+	SYSLOG_B25(LOG_INFO, "received bad table for PMT.\n");
 	return;
 }
 
@@ -309,14 +311,14 @@ parse_ecm(struct stream_priv *priv, uint16_t pid)
 
 	sec = priv->sections[pid];
 	if (sec->buf[0] != TID_ECM) {
-		syslog(LOG_INFO, "received broken header for ECM.\n");
+		SYSLOG_B25(LOG_INFO, "received broken header for ECM.\n");
 		goto bailout;
 	}
 
 	if (sec->priv == NULL) {
 		sec->priv = calloc(1, sizeof(struct ecm));
 		if (sec->priv == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for ECM.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for ECM.\n");
 			return;
 		}
 		ecm = sec->priv;
@@ -338,13 +340,13 @@ parse_ecm(struct stream_priv *priv, uint16_t pid)
 		return; // already processed PMT
 
 	ecm->ver = ver;
-	syslog(LOG_DEBUG, "new ECM. ver:[0x%02x].\n", ver);
+	SYSLOG_B25(LOG_DEBUG, "new ECM. ver:[0x%02x].\n", ver);
 
 	bcas_set_ecm(sec->buf + 8, sec->len - 12, &ecm->kinfo, &priv->fs_priv->card);
 	return;
 
 bailout:
-	syslog(LOG_INFO, "received bad table for ECM.\n");
+	SYSLOG_B25(LOG_INFO, "received bad table for ECM.\n");
 	return;
 }
 
@@ -362,7 +364,7 @@ parse_cat(struct stream_priv *priv, uint16_t pid)
 
 	sec = priv->sections[pid];
 	if (sec->buf[0] != TID_CAT || sec->len < 12) {
-		syslog(LOG_INFO, "received bad table[%#04hhx] for CAT.\n",
+		SYSLOG_B25(LOG_INFO, "received bad table[%#04hhx] for CAT.\n",
 		       sec->buf[0]);
 		return;
 	}
@@ -406,11 +408,11 @@ parse_cat(struct stream_priv *priv, uint16_t pid)
 				unref_section(priv, priv->sections[emm_pid]);
 		}
 	}
-	syslog(LOG_DEBUG, "new CAT, ver:%#04x, %d-CAs.\n", ver, cat->num_cas);
+	SYSLOG_B25(LOG_DEBUG, "new CAT, ver:%#04x, %d-CAs.\n", ver, cat->num_cas);
 	return;
 
 bailout:
-	syslog(LOG_INFO, "received bad table for CAT.\n");
+	SYSLOG_B25(LOG_INFO, "received bad table for CAT.\n");
 	return;
 }
 
@@ -439,7 +441,7 @@ parse_emm(struct stream_priv *priv, uint16_t pid)
 	if (sec->priv == NULL) {
 		sec->priv = calloc(1, sizeof(struct emm));
 		if (sec->priv == NULL) {
-			syslog(LOG_INFO, "failed to alloc mem for EMM.\n");
+			SYSLOG_B25(LOG_INFO, "failed to alloc mem for EMM.\n");
 			return;
 		}
 		emm = sec->priv;
@@ -520,12 +522,12 @@ parse_emm(struct stream_priv *priv, uint16_t pid)
 	}
 
 found:
-	syslog(LOG_INFO, "received new EMM.\n");
+	SYSLOG_B25(LOG_INFO, "received new EMM.\n");
 	bcas_set_emm(p, card);
 	return;
 
 bailout:
-	syslog(LOG_INFO, "received bad table for EMM.\n");
+	SYSLOG_B25(LOG_INFO, "received bad table for EMM.\n");
 	return;
 }
 
@@ -548,7 +550,7 @@ cleanup_section(struct stream_priv *priv, struct section *sec)
 		return;
 
 	if (remove_from_pfd_map(get_pfd_map(priv, sec->cb_func), sec->pid)) {
-		syslog(LOG_INFO,
+		SYSLOG_B25(LOG_INFO,
 			"failed to remove the section(pid:%#06hx).\n",
 			sec->pid);
 	}
@@ -572,7 +574,7 @@ unref_section(struct stream_priv *priv, struct section *sec)
 	if (sec->refcount)
 		return;
 
-	syslog(LOG_DEBUG, "removed the section for pid:[%#06hx].\n", sec->pid);
+	SYSLOG_B25(LOG_DEBUG, "removed the section for pid:[%#06hx].\n", sec->pid);
 	cleanup_section(priv, sec);
 }
 
@@ -589,7 +591,7 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 
 	sec = priv->sections[pid];
 	if (sec && sec->cb_func != cb_func) {
-		syslog(LOG_INFO, "PID:%#06hx is reused by another"
+		SYSLOG_B25(LOG_INFO, "PID:%#06hx is reused by another"
 			" type of section", pid);
 		cleanup_section(priv, sec);
 		sec = NULL;
@@ -601,18 +603,18 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 
 		sec->pid = pid;
 		sec->cb_func = cb_func;
-		//sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
-		sec->fd = open(priv->dmx_name, O_RDONLY);
+		sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
+		//sec->fd = open(priv->dmx_name, O_RDONLY);
 		if (sec->fd < 0) {
 			err = errno;
-			syslog(LOG_INFO, "failed to open the demux device:%s\n",
+			SYSLOG_B25(LOG_INFO, "failed to open the demux device:%s\n",
 				priv->dmx_name);
 			free(sec);
 			errno = err;
 			return NULL;
 		}
 		if (add_to_pfd_map(get_pfd_map(priv, cb_func), pid, sec->fd)) {
-			syslog(LOG_INFO, "failed to add the pollfd for pid:"
+			SYSLOG_B25(LOG_INFO, "failed to add the pollfd for pid:"
 				"%#06hx.\n", pid);
 			close(sec->fd);
 			free(sec);
@@ -624,11 +626,11 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 		secfilter.flags = DMX_IMMEDIATE_START;
 		if (ioctl(sec->fd, DMX_SET_FILTER, &secfilter) < 0) {
 			err = errno;
-			syslog(LOG_INFO, "failed to set the filter for pid:"
+			SYSLOG_B25(LOG_INFO, "failed to set the filter for pid:"
 				"%#06hx to the demux device:%s\n",
 				pid, priv->dmx_name);
 			if (remove_from_pfd_map(get_pfd_map(priv, cb_func), pid))
-				syslog(LOG_INFO, "failed to remove the poll fd"
+				SYSLOG_B25(LOG_INFO, "failed to remove the poll fd"
 					" for pid:%#06hx.\n", pid);
 			close(sec->fd);
 			free(sec);
@@ -636,7 +638,7 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 			return NULL;
 		}
 		priv->sections[pid] = sec;
-		syslog(LOG_DEBUG, "created new section for pid:[%#06hx].\n", pid);
+		SYSLOG_B25(LOG_DEBUG, "created new section for pid:[%#06hx].\n", pid);
 	}
 	sec->refcount++;
 	return sec;
@@ -674,7 +676,7 @@ descramble(struct stream_priv *priv, uint8_t *buf,
 		goto noscrambled;
 
 	if (ca->cas_id != card->cas_id) {
-		syslog(LOG_INFO, "CAS:[0x%04hx] of pid:[0x%04hx] != "
+		SYSLOG_B25(LOG_INFO, "CAS:[0x%04hx] of pid:[0x%04hx] != "
 			"CAS:[0x%04hx] of the card.\n",	ca->cas_id,
 			(buf[1] & 0x1f) << 8 | buf[2], card->cas_id);
 		return;
@@ -703,17 +705,17 @@ descramble(struct stream_priv *priv, uint8_t *buf,
 	pthread_mutex_unlock(&card->lock);
 
 	if (!priv->output_start)
-		syslog(LOG_DEBUG, "descramle started.\n");
+		SYSLOG_B25(LOG_DEBUG, "descramle started.\n");
 	priv->output_start = 1;
 	buf[3] &= ~TS_CA_MASK;
 	return;
 
 noscrambled:
-	syslog(LOG_DEBUG, "packet CA flag is set but PMT denies.\n");
+	SYSLOG_B25(LOG_DEBUG, "packet CA flag is set but PMT denies.\n");
 	return;
 
 notready:
-//	syslog(LOG_DEBUG, " BCAS is not yet ready for de-scrambling.\n");
+//	SYSLOG_B25(LOG_DEBUG, " BCAS is not yet ready for de-scrambling.\n");
 	return;
 }
 
@@ -733,7 +735,7 @@ push_outbuf(struct stream_priv *priv, uint8_t *buf, size_t len)
 	int l;
 
 	if (!priv->output_start && priv->fs_priv->cutoff) {
-		//syslog(LOG_DEBUG, "not yet prepared to outputuf, discarding data.\n");
+		//SYSLOG_B25(LOG_DEBUG, "not yet prepared to outputuf, discarding data.\n");
 		return;
 	}
 
@@ -746,7 +748,7 @@ push_outbuf(struct stream_priv *priv, uint8_t *buf, size_t len)
 			memcpy(priv->outbuf, buf + l, len - l);
 		}
 		if (priv->outbuf_head - priv->outbuf_tail <= len) {
-			syslog(LOG_DEBUG, "outbuf overflowed.\n");
+			SYSLOG_B25(LOG_DEBUG, "outbuf overflowed.\n");
 			advance(&priv->outbuf_head, sizeof(priv->outbuf), 188);
 		}
 		advance(&priv->outbuf_tail, sizeof(priv->outbuf), len);
@@ -758,7 +760,7 @@ push_outbuf(struct stream_priv *priv, uint8_t *buf, size_t len)
 			memcpy(priv->outbuf + priv->outbuf_tail, buf, l);
 			memcpy(priv->outbuf, buf + l, len - l);
 			if (len -l >= priv->outbuf_head) {
-				syslog(LOG_DEBUG, "outbuf overflowed.\n");
+				SYSLOG_B25(LOG_DEBUG, "outbuf overflowed.\n");
 				advance(&priv->outbuf_head,
 					sizeof(priv->outbuf), 188);
 			}
@@ -914,7 +916,7 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 			sec = priv->sections[pid];
 			if (!sec) {
 				err = EINVAL;
-				syslog(LOG_INFO, "poll found a invalid"
+				SYSLOG_B25(LOG_INFO, "poll found a invalid"
 					" section for pid:%#06hx", pid);
 				goto failed;
 			}
@@ -922,7 +924,7 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 			seclen = (sec->buf[1] & 0x0f) << 8 | sec->buf[2];
 			if (res < seclen + 3) {
 				err = errno;
-				syslog(LOG_INFO, "failed to read the"
+				SYSLOG_B25(LOG_INFO, "failed to read the"
 					" section for pid:%#06hx", pid);
 				goto failed;
 			}
@@ -931,7 +933,7 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 				sec->cb_func(priv, pid);
 		} else if (map->pfds[i].revents != 0) {
 			err = EIO;
-			syslog(LOG_INFO, "poll received an error on the fd"
+			SYSLOG_B25(LOG_INFO, "poll received an error on the fd"
 				" for pid:%#06hx", map->pids[i]);
 //			if((errno != EOVERFLOW)) { // OK?
 				goto failed;
@@ -944,7 +946,7 @@ do_read_section(struct stream_priv *priv, struct pfd_map *map, int timeout)
 
 failed:
 	err = errno;
-	syslog(LOG_INFO, "failed to poll. errno:%d.\n", err);
+	SYSLOG_B25(LOG_INFO, "failed to poll. errno:%d.\n", err);
 	return err;
 }
 
@@ -972,7 +974,7 @@ fetch_loop(void *data)
 	pthread_cleanup_push(fetch_loop_cleanup, data);
 
 	if (setup_fixed_pid_sections(priv) < 0) {
-		syslog(LOG_INFO, "failed to setup pollfd's for PAT etc.\n");
+		SYSLOG_B25(LOG_INFO, "failed to setup pollfd's for PAT etc.\n");
 		goto failed;
 	}
 
@@ -998,6 +1000,8 @@ fetch_loop(void *data)
 		/* read from dvr0 dev */
 		p = priv->inbuf + priv->inbuf_len;
 		res = poll(&pfd, 1, 10000);
+		err = errno;
+		
 		if(res > 0) {
 		while (priv->inbuf_len < min_read) {
 			int __read_len = sizeof(priv->inbuf) - priv->inbuf_len;
@@ -1008,13 +1012,13 @@ fetch_loop(void *data)
 				
 				if ((errno != EAGAIN) && (errno != EOVERFLOW)) { // Dirty hack.
 					err = errno;
-					syslog(LOG_INFO, "fetch_loop(): failed to read. ret:%d err:%d",
+					SYSLOG_B25(LOG_INFO, "fetch_loop(): failed to read. ret:%d err:%d",
 						   res, err);
 					goto failed;
 				} else if (errno == EAGAIN){
 					// EAGAIN
 					int nerr = errno;
-					syslog(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
+					SYSLOG_B25(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
 						   res, nerr);
 					int rres = poll(&pfd, 1, 10000); // redundant?
 					if(rres < 0) {
@@ -1025,7 +1029,7 @@ fetch_loop(void *data)
 				} else if(errno == EOVERFLOW) {
 					// EOVERFLOW: Discard data(TRY)
 					err = errno;
-					syslog(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
+					SYSLOG_B25(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
 						   res, err);
 					break;
 				}
@@ -1034,13 +1038,16 @@ fetch_loop(void *data)
 				p += res;
 				priv->inbuf_len += res;
 			}
-			//res = poll(&pfd, 1, 0); // redundant?
-			//if(res <= 0) break;
+			if(sizeof(priv->inbuf) > priv->inbuf_len) {
+				err = errno;
+				res = poll(&pfd, 1, 0); // redundant?
+				if(res < 0) break;
+			}
 		};
 		}
 		if (res < 0) { //
-			err = errno;
-			syslog(LOG_INFO, "failed to poll on dvr.\n");
+			//err = errno;
+			SYSLOG_B25(LOG_INFO, "failed to poll on dvr.\n");
 			goto failed;
 		} else if (priv->inbuf_len < min_read) {
 			// res==0. read all data but not enough
@@ -1075,10 +1082,10 @@ fetch_loop(void *data)
 
 		while (len >= priv->packet_size) {
 			if (*p != 0x47) {
-				syslog(LOG_DEBUG, "sync lost.\n");
+				SYSLOG_B25(LOG_DEBUG, "sync lost.\n");
 				res = ts_sync(p, len);
 				if (res < 0) {
-					syslog(LOG_INFO, "failed to sync.\n");
+					SYSLOG_B25(LOG_INFO, "failed to sync.\n");
 					priv->inbuf_len = 0;
 					priv->packet_size = 0;
 					min_read = MAX_SCAN_LEN;
@@ -1118,7 +1125,7 @@ failed:
 	priv->err = err;
 	pthread_cond_signal(&priv->buf_cond);
 	pthread_mutex_unlock(&priv->buf_lock);
-	syslog(LOG_INFO, " fuse_b25 fetch loop exited.\n");
+	SYSLOG_B25(LOG_INFO, " fuse_b25 fetch loop exited.\n");
 	pthread_cleanup_pop(0);
 	return NULL;
 }
@@ -1135,7 +1142,7 @@ init_stream(struct stream_priv *priv)
 
 	if (snprintf(priv->dmx_name, sizeof(priv->dmx_name),
 		"%s/demux%u", priv->fs_priv->target_dir, priv->dvr_no) < 0) {
-		syslog(LOG_INFO, "failed to create demuxer device name.\n");
+		SYSLOG_B25(LOG_INFO, "failed to create demuxer device name.\n");
 		return -ENXIO;
 	}
 
@@ -1146,7 +1153,7 @@ init_stream(struct stream_priv *priv)
 	if (priv->fs_priv->conv || priv->fs_priv->eit) {
 		priv->iconv_cd = iconv_open("UTF-16BE//TRANSLIT", "EUC-JISX0213");
 		if (priv->iconv_cd == (iconv_t)-1) {
-			syslog(LOG_INFO,
+			SYSLOG_B25(LOG_INFO,
 			       "text conv. disabled as iconv_open() failed:%m\n");
 			priv->fs_priv->conv = 0;
 			priv->fs_priv->eit = 0;

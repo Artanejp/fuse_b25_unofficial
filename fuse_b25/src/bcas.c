@@ -24,6 +24,8 @@
 #define syslog(a, args...) fprintf(stderr, args...)
 #endif
 
+#include "fuse_b25_common.h"
+
 #define CARD_SW1_OK 0x90
 #define CARD_SW2_OK 0x00
 
@@ -75,20 +77,20 @@ get_card (SCARDCONTEXT cxt, SCARDHANDLE * h, char * iccname)
 
   ret = SCardListReaders (cxt, NULL, NULL, &len);
   if (ret != SCARD_S_SUCCESS) {
-    syslog (LOG_NOTICE, "Failed to get the length of the card list: %s\n",
+    SYSLOG_B25(LOG_NOTICE, "Failed to get the length of the card list: %s\n",
         pcsc_stringify_error (ret));
     return NULL;
   }
 
   readers = (char *) malloc (len);
   if (!readers) {
-    syslog (LOG_NOTICE, "Failed to alloc memory for the card list.\n");
+    SYSLOG_B25(LOG_NOTICE, "Failed to alloc memory for the card list.\n");
     return NULL;
   }
 
   ret = SCardListReaders (cxt, NULL, readers, &len);
   if (ret != SCARD_S_SUCCESS) {
-    syslog (LOG_NOTICE, "Failed to get the card list: %s\n",
+    SYSLOG_B25(LOG_NOTICE, "Failed to get the card list: %s\n",
         pcsc_stringify_error (ret));
     free (readers);
     return NULL;
@@ -101,7 +103,7 @@ get_card (SCARDCONTEXT cxt, SCARDHANDLE * h, char * iccname)
     ret = SCardConnect (cxt, p, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1,
         h, &protocol);
     if (ret != SCARD_S_SUCCESS) {
-      syslog (LOG_INFO, "Failed to connect the card [%s]/%s.\n",
+      SYSLOG_B25(LOG_INFO, "Failed to connect the card [%s]/%s.\n",
           p, pcsc_stringify_error (ret));
       continue;
     }
@@ -154,7 +156,7 @@ bcas_card_setup (struct bcas * card, int in_retrying)
 
   name = get_card (card->cxt, &card->hcard, card->iccname);
   if (!name) {
-    syslog (myLOG_NOTICE, "Failed to find an available BCAS card.\n");
+    SYSLOG_B25(myLOG_NOTICE, "Failed to find an available BCAS card.\n");
     goto bailout;
   }
   free(name);
@@ -175,7 +177,7 @@ bcas_card_setup (struct bcas * card, int in_retrying)
     nanosleep (&wt1, NULL);
   }
   if (retry == 3 || rlen < 59) {
-    syslog (myLOG_INFO, "Failed to initialize the card.\n");
+    SYSLOG_B25(myLOG_INFO, "Failed to initialize the card.\n");
     goto bailout;
   }
   cas_id = rspbuf[6] << 8 | rspbuf[7];
@@ -183,7 +185,7 @@ bcas_card_setup (struct bcas * card, int in_retrying)
       rspbuf[1] < 55 || (rspbuf[4] << 8 | rspbuf[5]) != CARD_RETCODE_OK ||
       (cas_id != CA_SYSTEM_ID_ARIB && cas_id != CA_SYSTEM_ID_ARIB_B) ||
       rspbuf[14] != CARD_TYPE_GENERAL) {
-    syslog (myLOG_INFO, "Got bad response for the card init command.\n");
+    SYSLOG_B25(myLOG_INFO, "Got bad response for the card init command.\n");
     goto bailout;
   }
   card->cas_id = cas_id;
@@ -218,14 +220,14 @@ bcas_card_setup (struct bcas * card, int in_retrying)
     nanosleep (&wt1, NULL);
   }
   if (retry == 3 || rlen < 19) {
-    syslog (myLOG_INFO, "Failed to get info from the the card.\n");
+    SYSLOG_B25(myLOG_INFO, "Failed to get info from the the card.\n");
     goto bailout;
   }
 
   if (rspbuf[rlen - 2] != CARD_SW1_OK || rspbuf[rlen - 1] != CARD_SW2_OK ||
       rspbuf[1] < 15 || (rspbuf[4] << 8 | rspbuf[5]) != CARD_RETCODE_OK ||
       rspbuf[6] < 1 || rspbuf[6] > 8) {
-    syslog (myLOG_INFO, "Got bad response for the card info command.\n");
+    SYSLOG_B25(myLOG_INFO, "Got bad response for the card info command.\n");
     goto bailout;
   }
 
@@ -233,11 +235,11 @@ bcas_card_setup (struct bcas * card, int in_retrying)
   card->num_id = rspbuf[6];
   memcpy (card->id, &rspbuf[7], 10 * rspbuf[6]);
   card->status = CARD_S_OK;
-  syslog (LOG_INFO, "BCAS card init succeeded.\n");
+  SYSLOG_B25(LOG_INFO, "BCAS card init succeeded.\n");
   return 0;
 
 bailout:
-  syslog (myLOG_NOTICE, "BCAS card not available.\n");
+  SYSLOG_B25(myLOG_NOTICE, "BCAS card not available.\n");
   return -1;
 }
 
@@ -273,13 +275,13 @@ do_io_loop(struct bcas *card)
     pthread_mutex_unlock (&card->lock);
 
     if (clen == BCAS_RESET_REQUEST) {
-      syslog (LOG_DEBUG, "requested to reset the card.\n");
+      SYSLOG_B25(LOG_DEBUG, "requested to reset the card.\n");
       ret = SCardReconnect (card->hcard, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1,
           SCARD_RESET_CARD, &protocol);
       if (ret == SCARD_S_SUCCESS)
-        syslog (LOG_DEBUG, "BCAS card has been reset.\n");
+        SYSLOG_B25(LOG_DEBUG, "BCAS card has been reset.\n");
       else
-        syslog (LOG_INFO, "BCAS failed to reset. ret=%ld.\n", ret);
+        SYSLOG_B25(LOG_INFO, "BCAS failed to reset. ret=%ld.\n", ret);
       continue;
     }
 
@@ -287,7 +289,7 @@ do_io_loop(struct bcas *card)
       break;
 
     if (clen > BCAS_MAX_MSG_LEN) {
-      syslog (LOG_INFO, "Too long CARD command (%dB).\n", clen); 
+      SYSLOG_B25(LOG_INFO, "Too long CARD command (%dB).\n", clen); 
       goto failed;
     }
 
@@ -296,19 +298,19 @@ do_io_loop(struct bcas *card)
     ret = SCardTransmit (card->hcard, SCARD_PCI_T1, cmdbuf, clen,
 			 &rpci, rspbuf, &rlen);
     if (ret == SCARD_W_RESET_CARD) {
-      syslog (LOG_INFO, "resetting the card.\n"); 
+      SYSLOG_B25(LOG_INFO, "resetting the card.\n"); 
       ret = SCardReconnect (card->hcard, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1,
           SCARD_RESET_CARD, &protocol);
       if (ret == SCARD_S_SUCCESS) {
-        syslog (LOG_INFO, "BCAS card has been reset.\n");
+        SYSLOG_B25(LOG_INFO, "BCAS card has been reset.\n");
         goto failed;
       }
     }
 
     if (ret != SCARD_S_SUCCESS) {
-      syslog (LOG_INFO, "the last card cmd failed.\n");
+      SYSLOG_B25(LOG_INFO, "the last card cmd failed.\n");
       if (++retry >= 3) {
-        syslog (LOG_NOTICE, "Failed to retry card command %d times.\n", retry);
+        SYSLOG_B25(LOG_NOTICE, "Failed to retry card command %d times.\n", retry);
         goto bailout;
       }
       SCardDisconnect (card->hcard, SCARD_RESET_CARD);
@@ -316,10 +318,10 @@ do_io_loop(struct bcas *card)
       ret = SCardReconnect (card->hcard, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1,
            SCARD_LEAVE_CARD, &protocol);
       if (ret != SCARD_S_SUCCESS) {
-        syslog (LOG_INFO, "Failed to reset the card.\n");
+        SYSLOG_B25(LOG_INFO, "Failed to reset the card.\n");
         goto bailout;
       } else {
-        syslog (LOG_INFO, "BCAS card has been reset.\n");
+        SYSLOG_B25(LOG_INFO, "BCAS card has been reset.\n");
         goto failed;
       }
     }
@@ -328,7 +330,7 @@ do_io_loop(struct bcas *card)
     /* check if failed and update the status */
     if (rlen < 6 ||
         rspbuf[rlen - 2] != CARD_SW1_OK || rspbuf[rlen - 1] != CARD_SW2_OK) {
-      syslog (LOG_INFO,
+      SYSLOG_B25(LOG_INFO,
         "Got a bad response from the card. len:%ld, SW1/2:[0x%02X%02X].\n",
         rlen,
         rlen >= 2 ? rspbuf[rlen - 2] : 0, rlen >= 1 ? rspbuf[rlen - 1] : 0);
@@ -337,7 +339,7 @@ do_io_loop(struct bcas *card)
 
     /* currently, we ignore the directions from IC cards. just print it. */
     if (rspbuf[2] || rspbuf[3]) {
-      syslog (LOG_WARNING, "Directions from the card.[0x%04x].\n",
+      SYSLOG_B25(LOG_WARNING, "Directions from the card.[0x%04x].\n",
         (uint16_t) (rspbuf[2] << 8 | rspbuf[3]));
     }
     /* call the callback func. */
@@ -383,11 +385,11 @@ bcas_ecm_cb (struct bcas *card, void *data, uint8_t *rbuf, size_t rlen)
   uint16_t retcode;
   uint64_t k_odd, k_even;
 
-  syslog (LOG_DEBUG, "Got an ECM response.\n");
+  SYSLOG_B25(LOG_DEBUG, "Got an ECM response.\n");
 
 #define ECM_RSP_UNIT_SIZE 21
   if (rlen < ECM_RSP_UNIT_SIZE + 4 || rbuf[1] != ECM_RSP_UNIT_SIZE) {
-    syslog (LOG_INFO,
+    SYSLOG_B25(LOG_INFO,
         "Bad ECM response, len:%ld, unit-len:%d.\n", rlen, rbuf[1]);
     goto failed;
   }
@@ -396,7 +398,7 @@ bcas_ecm_cb (struct bcas *card, void *data, uint8_t *rbuf, size_t rlen)
       retcode != CARD_RETCODE_GD_PREPPV &&
       retcode != CARD_RETCODE_GD_POSTPPV &&
       retcode != CARD_RETCODE_PV_PREPPV && retcode != CARD_RETCODE_PV_POSTPPV) {
-    syslog (LOG_NOTICE,
+    SYSLOG_B25(LOG_NOTICE,
         "Bad ret code[0x%04x] in a ECM response.\n", retcode);
     goto failed;
   }
@@ -407,12 +409,12 @@ bcas_ecm_cb (struct bcas *card, void *data, uint8_t *rbuf, size_t rlen)
   pthread_mutex_lock (&card->lock);
   card->errors = 0;
   if (k_odd != kinfo->k_scr[0].whole) {
-    syslog (LOG_DEBUG, "ECM k_odd updated.\n");
+    SYSLOG_B25(LOG_DEBUG, "ECM k_odd updated.\n");
     kinfo->k_scr[0].whole = k_odd;
     core_schedule (kinfo->wrk[0], card->param.k_sys, &kinfo->k_scr[0].sub);
   }
   if (k_even != kinfo->k_scr[1].whole) {
-    syslog (LOG_DEBUG, "ECM k_even updated.\n");
+    SYSLOG_B25(LOG_DEBUG, "ECM k_even updated.\n");
     kinfo->k_scr[1].whole = k_even;
     core_schedule (kinfo->wrk[1], card->param.k_sys, &kinfo->k_scr[1].sub);
   }
@@ -425,7 +427,7 @@ failed:
   pthread_mutex_lock (&card->lock);
   kinfo->status = CMD_S_FAILED;
   if (++card->errors > MAX_ERROR_RETRY) {
-    syslog (LOG_NOTICE, "Card I/O failed too many times.\n");
+    SYSLOG_B25(LOG_NOTICE, "Card I/O failed too many times.\n");
     card->status = CARD_S_NG;
   }
   pthread_mutex_unlock (&card->lock);
@@ -475,17 +477,17 @@ bcas_set_ecm(uint8_t *buf, int len, struct demulti2_key_info *kinfo,
 
 	pthread_cond_broadcast(&card->cond);
 	pthread_mutex_unlock(&card->lock);
-	syslog(LOG_DEBUG, "sent an ECM to the card.(len:%d)\n", len);
+	SYSLOG_B25(LOG_DEBUG, "sent an ECM to the card.(len:%d)\n", len);
 	return;
 
 bailout:
 	kinfo->status = CMD_S_FAILED;
 	if (++card->errors > MAX_ERROR_RETRY) {
-		syslog (LOG_NOTICE, "Card I/O failed too many times.\n");
+		SYSLOG_B25(LOG_NOTICE, "Card I/O failed too many times.\n");
 		card->status = CARD_S_NG;
 	}
 	pthread_mutex_unlock(&card->lock);
-	syslog(LOG_INFO, "dropped an ECM due to the failed/slow card.\n");
+	SYSLOG_B25(LOG_INFO, "dropped an ECM due to the failed/slow card.\n");
 	return;
 }
 
@@ -521,16 +523,16 @@ bcas_set_emm(uint8_t *buf, struct bcas *card)
 
 	pthread_cond_broadcast(&card->cond);
 	pthread_mutex_unlock(&card->lock);
-	syslog(LOG_INFO, "sent an EMM to the card.(len:%d)\n", len);
+	SYSLOG_B25(LOG_INFO, "sent an EMM to the card.(len:%d)\n", len);
 	return;
 
 bailout:
 	if (++card->errors > MAX_ERROR_RETRY) {
-		syslog (LOG_NOTICE, "Card I/O failed too many times.\n");
+		SYSLOG_B25(LOG_NOTICE, "Card I/O failed too many times.\n");
 		card->status = CARD_S_NG;
 	}
 	pthread_mutex_unlock(&card->lock);
-	syslog(LOG_WARNING, "dropped an EMM due to the failed/slow card.\n");
+	SYSLOG_B25(LOG_WARNING, "dropped an EMM due to the failed/slow card.\n");
 	return;
 }
 
@@ -557,7 +559,7 @@ bcas_card_io(void *arg)
 		ret = SCardEstablishContext(SCARD_SCOPE_SYSTEM,
 					    NULL, NULL, &card->cxt);
 		if (ret != SCARD_S_SUCCESS) {
-			syslog(in_retrying ? LOG_DEBUG : LOG_NOTICE,
+			SYSLOG_B25(in_retrying ? LOG_DEBUG : LOG_NOTICE,
 				"Can't connect to pcscd:%s.\n",
 				pcsc_stringify_error (ret));
 			goto retry;
