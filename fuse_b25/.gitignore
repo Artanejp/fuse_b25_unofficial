@@ -7,3 +7,9 @@ config.log
 config.status
 stamp-*
 *.spec
+autom4te.cache/
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+*~
