@@ -1,0 +1,14 @@
+[Unit]
+Description=start fuse_b25 for Japanese ISDB-T/ISDB-S broadcasting
+After=local-fs.target pcscd.service
+
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/start_fuse_b25.sh
+RemainAfterExit=yes
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target
+
