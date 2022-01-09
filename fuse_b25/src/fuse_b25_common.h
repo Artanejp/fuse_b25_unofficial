@@ -10,7 +10,7 @@
 #define _FUSE_B25_COMMON_H_
 
 #define SYSLOG_B25(sev, fmt, ...)								\
-	syslog(sev, "%s() in file %s, line%d: "fmt, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__)
+	syslog(sev, "%s() in file %s, line %d: "fmt, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__)
 
 
 #endif /* _FUSE_B25_COMMON_H_ */
