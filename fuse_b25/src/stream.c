@@ -999,7 +999,7 @@ fetch_loop(void *data)
 
 		/* read from dvr0 dev */
 		p = priv->inbuf + priv->inbuf_len;
-		res = poll(&pfd, 1, 10000);
+		res = poll(&pfd, 1, 25000);
 		err = errno;
 		
 		if(res > 0) {
@@ -1020,7 +1020,7 @@ fetch_loop(void *data)
 					int nerr = errno;
 					SYSLOG_B25(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
 						   res, nerr);
-					int rres = poll(&pfd, 1, 10000); // redundant?
+					int rres = poll(&pfd, 1, 100000); // redundant?
 					if(rres < 0) {
 						err = nerr;
 						break; // Any error
@@ -1028,10 +1028,16 @@ fetch_loop(void *data)
 					continue;
 				} else if(errno == EOVERFLOW) {
 					// EOVERFLOW: Discard data(TRY)
-					err = errno;
+					int nerr = errno;
 					SYSLOG_B25(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
-						   res, err);
-					break;
+						   res, nerr);
+					int rres = poll(&pfd, 1, 100000); // redundant?
+					if(rres < 0) {
+						err = nerr;
+						break; // Any error
+					}
+					continue;
+//					break;
 				}
 			}
 			if(res > 0) {
