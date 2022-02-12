@@ -1020,7 +1020,7 @@ fetch_loop(void *data)
 					int nerr = errno;
 					SYSLOG_B25(LOG_INFO, "fetch_loop(): WITH EAGAIN WAIT. ret:%d err:%d",
 						   res, nerr);
-					int rres = poll(&pfd, 1, 100000); // redundant?
+					int rres = poll(&pfd, 1, 1000); // redundant?
 					if(rres < 0) {
 						err = nerr;
 						break; // Any error
@@ -1031,12 +1031,8 @@ fetch_loop(void *data)
 					int nerr = errno;
 					SYSLOG_B25(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
 						   res, nerr);
-					int rres = poll(&pfd, 1, 100000); // redundant?
-					if(rres < 0) {
-						err = nerr;
-						break; // Any error
-					}
-					continue;
+					err = EIO;
+					goto failed;
 //					break;
 				}
 			}
