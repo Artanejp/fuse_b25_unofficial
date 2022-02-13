@@ -17,7 +17,8 @@
 #include <sys/ioctl.h>
 #include <linux/dvb/dmx.h>
 
-#define FUSE_USE_VERSION 28
+//#define FUSE_USE_VERSION 28
+#define FUSE_USE_VERSION 35
 #include <fuse.h>
 
 #ifdef NO_SYSLOG
@@ -603,8 +604,8 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 
 		sec->pid = pid;
 		sec->cb_func = cb_func;
-		sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
-		//sec->fd = open(priv->dmx_name, O_RDONLY);
+		//sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
+		sec->fd = open(priv->dmx_name, O_RDONLY);
 		if (sec->fd < 0) {
 			err = errno;
 			SYSLOG_B25(LOG_INFO, "failed to open the demux device:%s\n",
@@ -1012,8 +1013,10 @@ fetch_loop(void *data)
 				
 				if ((errno != EAGAIN) && (errno != EOVERFLOW)) { // Dirty hack.
 					err = errno;
-					SYSLOG_B25(LOG_INFO, "fetch_loop(): failed to read. ret:%d err:%d",
-						   res, err);
+					char estr[128] = {0};
+					strerror_r(err, estr, sizeof(estr) - 1); 
+					SYSLOG_B25(LOG_INFO, "fetch_loop(): failed to read. ret:%d err:%d(%s)",
+						   res, err, estr);
 					goto failed;
 				} else if (errno == EAGAIN){
 					// EAGAIN
@@ -1027,7 +1030,7 @@ fetch_loop(void *data)
 					}
 					continue;
 				} else if(errno == EOVERFLOW) {
-					// EOVERFLOW: Discard data(TRY)
+					// EOVERFLOW: *WILL* Make discarding data(TRY)
 					int nerr = errno;
 					SYSLOG_B25(LOG_INFO, "fetch_loop(): RETURNS WITH OVERFLOW. ret:%d err:%d",
 						   res, nerr);

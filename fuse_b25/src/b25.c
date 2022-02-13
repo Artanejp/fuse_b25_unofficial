@@ -8,7 +8,8 @@
 
 #include <config.h>
 
-#define FUSE_USE_VERSION 28
+//#define FUSE_USE_VERSION 28
+#define FUSE_USE_VERSION 35
 
 #include <dirent.h>
 #include <errno.h>
