@@ -17,13 +17,8 @@
 #include <sys/ioctl.h>
 #include <linux/dvb/dmx.h>
 
-//#define FUSE_USE_VERSION 28
-#define FUSE_USE_VERSION 35
+#include "using_fuse_version.h"
 #include <fuse.h>
-
-#ifdef NO_SYSLOG
-#define syslog(a, args...) fprintf(stderr, args...)
-#endif
 
 #include "fuse_b25_common.h"
 
@@ -604,8 +599,8 @@ get_section_for_pid(struct stream_priv *priv, uint16_t pid,
 
 		sec->pid = pid;
 		sec->cb_func = cb_func;
-		//sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
-		sec->fd = open(priv->dmx_name, O_RDONLY);
+		sec->fd = open(priv->dmx_name, O_RDONLY | O_NONBLOCK);
+		//sec->fd = open(priv->dmx_name, O_RDONLY);
 		if (sec->fd < 0) {
 			err = errno;
 			SYSLOG_B25(LOG_INFO, "failed to open the demux device:%s\n",

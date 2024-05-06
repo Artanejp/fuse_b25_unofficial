@@ -20,10 +20,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-#ifdef NO_SYSLOG
-#define syslog(a, args...) fprintf(stderr, args...)
-#endif
-
 #include "fuse_b25_common.h"
 
 #define CARD_SW1_OK 0x90

@@ -68,7 +68,9 @@ struct options {
 	int cutoff; /* flag to discard the beginning of the stream */
 			/* until the descrambling starts */
 	int dmxraw; /* flag to disable text conversion in demuxN device */
-
+	unsigned int idle_threads; /* number of idle threads; default = 1 */
+	unsigned int max_threads; /* number of idle threads; default = 2 */
+	int clone_fd; /* flag to clone fd feature; default = 0 */
 	char target_dir[32];
 	struct bcas card;
 };

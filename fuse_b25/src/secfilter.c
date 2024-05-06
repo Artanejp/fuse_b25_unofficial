@@ -15,13 +15,8 @@
 #include <linux/dvb/dmx.h>
 #include <unistd.h>
 
-//#define FUSE_USE_VERSION 28
-#define FUSE_USE_VERSION 35
+#include "using_fuse_version.h"
 #include <fuse.h>
-
-#ifdef NO_SYSLOG
-#define syslog(a, args...) fprintf(stderr, args...)
-#endif
 
 #include "fuse_b25_common.h"
 

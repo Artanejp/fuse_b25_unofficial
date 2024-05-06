@@ -17,10 +17,7 @@
 #include "stream.h"
 #include "convert.h"
 
-#ifdef NO_SYSLOG
-#define syslog(a, args...) fprintf(stderr, args...)
-#endif
-
+#include "using_fuse_version.h"
 #include "fuse_b25_common.h"
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
