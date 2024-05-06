@@ -8,14 +8,18 @@
 
 #include <config.h>
 
-//#define FUSE_USE_VERSION 28
-#define FUSE_USE_VERSION 35
+#include "using_fuse_version.h"
 
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <fuse.h>
 #include <fuse_opt.h>
+
+#if FUSE_USE_VERSION >= 30
+#include <fuse_lowlevel.h>
+#endif
+
 #include <inttypes.h>
 #include <libgen.h>
 #include <pthread.h>
@@ -32,15 +36,12 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "fuse_b25_common.h"
+
 #include "bcas.h"
 #include "stream.h"
 #include "secfilter.h"
 
-#if NO_SYSLOG
-#define syslog(a, args...) fprintf(stderr, args...)
-#endif
-
-#include "fuse_b25_common.h"
 
 struct options b25_priv;
 
@@ -58,6 +59,9 @@ static struct fuse_opt b25_opts[] =
 	{"--utc", offsetof(struct options, utc), 1},
 	{"--cutoff", offsetof(struct options, cutoff), 1},
 	{"--dmxraw", offsetof(struct options, dmxraw), 1},
+	{"--maxthreads=%u", offsetof(struct options, max_threads), 1},
+	{"--idlethreads=%u", offsetof(struct options, idle_threads), 2},
+	{"--clonefd=%d", offsetof(struct options, clone_fd), 0},
 	FUSE_OPT_KEY("-h", KEY_MY_USAGE),
 	FUSE_OPT_KEY("--help", KEY_MY_USAGE),
 
@@ -98,14 +102,18 @@ set_target_path(char *dst, size_t len, const char *name)
 }
 
 /* file system operations */
+#if FUSE_USE_VERSION < 30
 static int
 b25_getattr(const char *path, struct stat *stbuf)
+#else
+static int
+b25_getattr(const char *path, struct stat *stbuf, UNUSED_VAR struct fuse_file_info *finfo)
+#endif
 {
 	char target_path[64];
-
 	if (fuse_interrupted())
 		return -EINTR;
-
+	
 	set_target_path(target_path, sizeof(target_path), path);
 	if (strcmp(path, "/") &&
 	    strncmp(path, "/frontend", strlen("/frontend")) &&
@@ -138,9 +146,18 @@ b25_readlink(const char *path, char *buf, size_t size)
 	return 0;
 }
 
+/*
+ * ToDo: flags set with FUSE_READDIR_PLUS .
+ */
+#if FUSE_USE_VERSION < 30
 static int
 b25_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	off_t offset, struct fuse_file_info *fi)
+#else
+static int
+b25_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+			off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags)
+#endif	
 {
 	DIR *d;
 	struct dirent *ent;
@@ -163,7 +180,11 @@ b25_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		    strncmp(ent->d_name, "frontend", strlen("frontend"))) {
 			continue;
 		}
+		#if FUSE_USE_VERSION < 30
 		filler(buf, ent->d_name, NULL, 0);
+		#else
+		filler(buf, ent->d_name, NULL, 0, FUSE_FILL_DIR_PLUS | FUSE_READDIR_PLUS);
+		#endif
 	}
 
 	closedir(d);
@@ -580,8 +601,16 @@ b25_poll(const char *path, struct fuse_file_info *fi,
 	return -EBADF;
 }
 
+/*
+ * ToDo: init with *cfg.
+ */
+#if FUSE_USE_VERSION < 30
 static void *
 b25_init(struct fuse_conn_info *conn)
+#else
+static void *
+b25_init(struct fuse_conn_info *conn, UNUSED_VAR struct fuse_config *cfg)
+#endif
 {
 	int res;
 
@@ -650,6 +679,9 @@ main(int argc, char **argv)
 		SYSLOG_B25(LOG_NOTICE, "failed to parse options: %m\n");
 		return 1;
 	}
+	/* copied from fuse_main_real() */
+	
+	#if FUSE_USE_VERSION < 30
 	res = fuse_opt_add_arg(&args, "-odirect_io");
 	res += fuse_opt_add_arg(&args, "-odefault_permissions");
 	if (res < 0) {
@@ -658,20 +690,46 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	/* copied from fuse_main_real() */
 	fuse = fuse_setup(args.argc, args.argv, &b25_ops, sizeof(b25_ops),
 			  &mountpoint, &multithreaded, NULL);
 	fuse_opt_free_args(&args);
-	if (fuse == NULL) {
-		SYSLOG_B25(LOG_NOTICE, "failed to setup fuse: %m\n");
+	#else
+	struct fuse_cmdline_opts cmd_ops;
+	
+	if(fuse_parse_cmdline(&args, &cmd_ops) != 0) {
+		SYSLOG_B25(LOG_NOTICE, "extra arguments parse error.\n");
 		return 1;
 	}
-
+	mountpoint = cmd_ops.mountpoint;
+	multithreaded = (cmd_ops.singlethread == 0) ? 1 : 0;
+	
+	if(mountpoint == NULL) {
+		SYSLOG_B25(LOG_NOTICE, "mountpoint not found\n");
+		return 2;
+	}
+	fuse = fuse_new_session(&args, &b25_ops, sizeof(b25_ops), NULL);
+	fuse_opt_free_args(&args);
+	#endif
+	
+	if (fuse == NULL) {
+		SYSLOG_B25(LOG_NOTICE, "failed to setup fuse.  options: %m\n", mountpoint);
+		return 1;
+	}
 	res = sscanf(mountpoint, "/dev/dvb/adapter%u", &adapter);
 	if (res != 1) {
 		SYSLOG_B25(LOG_NOTICE, "invalid mount point: \"%s\"\n", mountpoint);
-		return 1;
+		#if FUSE_USE_VERSION >= 30
+		fuse_destroy(fuse);
+		#endif
+		return 4;
 	}
+	#if FUSE_USE_VERSION >= 30
+	if(fuse_mount(fuse, mountpoint) < 0) {
+		SYSLOG_B25(LOG_NOTICE, "failed to mount point %s. BYE.\n");
+		fuse_destroy(fuse);
+		return 2;
+	}
+	#endif
 
 	if (b25_priv.target) {
 		res = readlink(b25_priv.target, b25_priv.target_dir,
@@ -712,19 +770,56 @@ main(int argc, char **argv)
 #endif
 	   ) {
 		SYSLOG_B25(LOG_NOTICE, "can't access the target DVB device:[%s/]\n", b25_priv.target_dir);
+		#if FUSE_USE_VERSION >= 30
+		fuse_unmount(fuse);
+		fuse_destroy(fuse);
+		#endif
 		return 1;
 	}
 
 	/* main loop */
+	#if FUSE_USE_VERSION < 30
 	if (multithreaded)
 		res = fuse_loop_mt(fuse);
 	else
 		res = fuse_loop(fuse);
-
+	#else
+	if (multithreaded) {
+		#if FUSE_USE_VERSION < 32
+		res = fuse_loop_mt(fuse, cmd_ops.clone_fd);
+		#elif FUSE_USE_VERSION < FUSE_MAKE_VERSION(3, 12)
+		struct fuse_loop_config lcfg;
+		lcfg.clone_fd = (cmd_ops.clone_fd != 0) ? 1 : 0;
+		lcfg.max_idle_threads = (cmd_ops.max_idle_threads == 0) ? 1 : cmd_ops.max_idle_threads;
+		res = fuse_loop_mt(fuse, &lcfg);
+		#else
+		struct fuse_loop_config *plcfg = fuse_loop_cfg_create();
+		if(plcfg == NULL) {
+			res = fuse_loop(fuse);
+		} else { // Created
+			fuse_loop_cfg_set_clone_fd(plcfg, cmd_ops.clone_fd);
+			fuse_loop_cfg_set_idle_threads(plcfg, (cmd_ops.max_idle_threads < 1) ? 1 : cmd_ops.max_idle_threads);
+			if(cmd_ops.max_idle_threads < 1)
+				cmd_ops.max_idle_threads = 1;
+			
+			fuse_loop_cfg_set_max_threads(plcfg, (cmd_ops.max_threads <= cmd_ops.max_idle_threads) ? (cmd_ops.max_idle_threads + 1) : cmd_ops.max_threads); 
+			res = fuse_loop_mt(fuse, pcfg);
+			fuse_loop_cfg_destroy(pcfg);
+		}
+		#endif
+	} else {
+		res = fuse_loop(fuse);
+	}
+	#endif
 	if (res == -1)
 		SYSLOG_B25(LOG_NOTICE, "failed in fuse_loop: %m\n");
 
+	#if FUSE_USE_VERSION < 30
 	fuse_teardown(fuse, mountpoint);
+	#else
+	fuse_unmount(fuse);
+	fuse_destroy(fuse);
+	#endif
 	closelog();
 	return res;
 }
