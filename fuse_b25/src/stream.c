@@ -977,6 +977,9 @@ fetch_loop(void *data)
 	pfd.fd = priv->fd;
 	pfd.events = POLLIN;
 	min_read = MAX_SCAN_LEN;
+	if(priv->fs_priv != NULL) 
+ 		setlogmask(priv->fs_priv->log_mask);
+
 
 	while (1) {
 		/* check for data availability of each fd's */

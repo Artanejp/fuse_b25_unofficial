@@ -72,6 +72,7 @@ struct options {
 	unsigned int max_threads; /* number of idle threads; default = 2 */
 	int clone_fd; /* flag to clone fd feature; default = 0 */
 	char target_dir[32];
+	int log_mask; /* LOG MASKING. See manual page of setlogmask(3) . */
 	struct bcas card;
 };
 

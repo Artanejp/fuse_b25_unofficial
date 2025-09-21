@@ -62,6 +62,7 @@ static struct fuse_opt b25_opts[] =
 	{"--maxthreads=%u", offsetof(struct options, max_threads), 1},
 	{"--idlethreads=%u", offsetof(struct options, idle_threads), 2},
 	{"--clonefd=%d", offsetof(struct options, clone_fd), 0},
+	{"--logmask=%d", offsetof(struct options, log_mask), LOG_UPTO(LOG_DEBUG) & ~LOG_MASK(LOG_DEBUG)},
 	FUSE_OPT_KEY("-h", KEY_MY_USAGE),
 	FUSE_OPT_KEY("--help", KEY_MY_USAGE),
 
@@ -85,6 +86,7 @@ my_usage(const char *prog_name)
 		"    --cutoff     \thold the output of the leading non-scrambled packtes\n"
 		"                \t    until descrambling gets started\n"
 		"    --dmxraw     \tdisable text conversion of the output from demuxN\n"
+		"    --logmask value  \tSet logging masks as integer value ('1' bit is enabled.-1 = ALL ENABLED?).Default is upper-equal than LOG_INFO.\n"
 		"\n", basename(p));
 	free(p);
 }
@@ -674,6 +676,7 @@ main(int argc, char **argv)
 	memset(&b25_priv, 0, sizeof(b25_priv));
 	b25_priv.emm = 1;
 	b25_priv.conv = 0;
+	b25_priv.log_mask = LOG_UPTO(LOG_DEBUG) & ~LOG_MASK(LOG_DEBUG);
 	res = fuse_opt_parse(&args, &b25_priv, b25_opts, &my_opt_proc);
 	if (res == -1) {
 		SYSLOG_B25(LOG_NOTICE, "failed to parse options: %m\n");
@@ -712,7 +715,7 @@ main(int argc, char **argv)
 	#endif
 	
 	if (fuse == NULL) {
-		SYSLOG_B25(LOG_NOTICE, "failed to setup fuse.  options: %m\n", mountpoint);
+		SYSLOG_B25(LOG_NOTICE, "failed to setup fuse.  options: %s\n", mountpoint);
 		return 1;
 	}
 	res = sscanf(mountpoint, "/dev/dvb/adapter%u", &adapter);
@@ -776,6 +779,8 @@ main(int argc, char **argv)
 		#endif
 		return 1;
 	}
+	/* set log mask */
+        setlogmask(b25_priv.log_mask);
 
 	/* main loop */
 	#if FUSE_USE_VERSION < 30
